@@ -1,4 +1,4 @@
-package main
+package experiment2
 
 import (
 	"container/heap"
@@ -75,13 +75,30 @@ func (pq *PriorityQueue) update(item *PriorityQueueItem, nodeID int, priority in
 	heap.Fix(pq, item.Index)
 }
 
-// Heuristic functie (Euclidische afstand) voor A*.
-func heuristic(nodeID, targetID int, graph Graph) int {
+// Heuristieken
+type Heuristic func(nodeID, targetID int, graph Graph) int
+
+// Euclidische afstandsheuristiek.
+func euclideanHeuristic(nodeID, targetID int, graph Graph) int {
 	node := graph.Nodes[nodeID]
 	target := graph.Nodes[targetID]
 	dx := node.X - target.X
 	dy := node.Y - target.Y
 	return int(math.Sqrt(dx*dx + dy*dy))
+}
+
+// Manhattan afstandsheuristiek.
+func manhattanHeuristic(nodeID, targetID int, graph Graph) int {
+	node := graph.Nodes[nodeID]
+	target := graph.Nodes[targetID]
+	dx := math.Abs(node.X - target.X)
+	dy := math.Abs(node.Y - target.Y)
+	return int(dx + dy)
+}
+
+// Nul heuristiek (Dijkstra).
+func nullHeuristic(nodeID, targetID int, graph Graph) int {
+	return 0
 }
 
 // Dijkstra implementatie.
@@ -139,8 +156,8 @@ func Dijkstra(graph Graph, startNode, endNode int) (int, []int, time.Duration) {
 	return distances[endNode], path, duration
 }
 
-// AStar implementatie.
-func AStar(graph Graph, startNode, endNode int) (int, []int, time.Duration) {
+// AStar implementatie met een generieke heuristiek.
+func AStar(graph Graph, startNode, endNode int, heuristic Heuristic) (int, []int, time.Duration) {
 	startTime := time.Now()
 
 	distances := make([]int, len(graph.Nodes))
@@ -252,7 +269,16 @@ func simulateIncident(graph *Graph, fromNode, toNode, increasedWeight int) {
 	graph.Nodes[fromNode].Edges = append(graph.Nodes[fromNode].Edges, Edge{To: toNode, Weight: increasedWeight})
 }
 
-func main() {
+// adjustWeights past de gewichten van de verbindingen aan op basis van een factor.
+func adjustWeights(graph *Graph, adjustmentFactor float64) {
+	for i := range graph.Nodes {
+		for j := range graph.Nodes[i].Edges {
+			graph.Nodes[i].Edges[j].Weight = int(float64(graph.Nodes[i].Edges[j].Weight) * adjustmentFactor)
+		}
+	}
+}
+
+func Experiment2() {
 	rand.Seed(time.Now().UnixNano())
 
 	numNodes := 10000
@@ -261,6 +287,12 @@ func main() {
 	endNode := 99
 
 	trafficConditions := []string{"Laag verkeer", "Hoog verkeer", "Gemengd verkeer"}
+	heuristics := map[string]Heuristic{
+		"Null":      nullHeuristic,
+		"Euclidean": euclideanHeuristic,
+		"Manhattan": manhattanHeuristic,
+	}
+	weightAdjustments := []float64{0.5, 1.0, 1.5}
 
 	for _, condition := range trafficConditions {
 		fmt.Printf("Verkeersomstandigheden: %s\n", condition)
@@ -272,13 +304,36 @@ func main() {
 			fmt.Println("Incident gesimuleerd tussen knooppunt 20 en 30")
 		}
 
-		// Dijkstra
-		distanceDijkstra, pathDijkstra, durationDijkstra := Dijkstra(graph, startNode, endNode)
-		fmt.Printf("  Dijkstra: Afstand = %d, Pad = %v, Tijd = %s\n", distanceDijkstra, pathDijkstra, durationDijkstra)
+		for heuristicName, heuristic := range heuristics {
+			fmt.Printf("  Heuristiek: %s\n", heuristicName)
 
-		// A*
-		distanceAStar, pathAStar, durationAStar := AStar(graph, startNode, endNode)
-		fmt.Printf("  A*: Afstand = %d, Pad = %v, Tijd = %s\n", distanceAStar, pathAStar, durationAStar)
+			// Dijkstra (geen heuristiek)
+			if heuristicName == "Null" {
+				distanceDijkstra, pathDijkstra, durationDijkstra := Dijkstra(graph, startNode, endNode)
+				fmt.Printf("    Dijkstra: Afstand = %d, Pad = %v, Tijd = %s\n", distanceDijkstra, pathDijkstra, durationDijkstra)
+			}
+
+			// A* met de huidige heuristiek
+			distanceAStar, pathAStar, durationAStar := AStar(graph, startNode, endNode, heuristic)
+			fmt.Printf("    A*: Afstand = %d, Pad = %v, Tijd = %s\n", distanceAStar, pathAStar, durationAStar)
+
+			// Gewichtsaanpassingen
+			for _, adjustmentFactor := range weightAdjustments {
+				fmt.Printf("    Gewichtsaanpassing: %.1f\n", adjustmentFactor)
+				graphCopy := graph // Maak een kopie van de graaf
+				adjustWeights(&graphCopy, adjustmentFactor)
+
+				// Dijkstra (geen heuristiek)
+				if heuristicName == "Null" {
+					distanceDijkstra, pathDijkstra, durationDijkstra := Dijkstra(graphCopy, startNode, endNode)
+					fmt.Printf("      Dijkstra: Afstand = %d, Pad = %v, Tijd = %s\n", distanceDijkstra, pathDijkstra, durationDijkstra)
+				}
+
+				// A* met de huidige heuristiek
+				distanceAStar, pathAStar, durationAStar := AStar(graphCopy, startNode, endNode, heuristic)
+				fmt.Printf("      A*: Afstand = %d, Pad = %v, Tijd = %s\n", distanceAStar, pathAStar, durationAStar)
+			}
+		}
 		fmt.Println()
 	}
 }
